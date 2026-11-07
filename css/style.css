@@ -1,0 +1,684 @@
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      overscroll-behavior: none;
+      touch-action: none;
+      font-family: 'Courier New', Courier, monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0;
+    }
+    #viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      aspect-ratio: auto;
+      background: #000;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      --dpad-opacity: 0.78;
+      --btns-opacity: 0.78;
+      --controls-scale: 1.0;
+    }
+
+    /* MODO TELA CHEIA TOTAL EM DISPOSITIVOS MÓVEIS / FULLSCREEN */
+    body.mobile-mode,
+    body.is-fullscreen {
+      background: #000;
+      gap: 0;
+    }
+    body.mobile-mode #app-footer,
+    body.is-fullscreen #app-footer {
+      display: none !important;
+    }
+    body.mobile-mode #viewport,
+    body.is-fullscreen #viewport {
+      width: 100vw;
+      height: 100vh;
+      height: 100dvh;
+      max-width: none;
+      max-height: none;
+      aspect-ratio: auto;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
+    }
+    /* Em celulares segurados na vertical (Portrait), gira automaticamente para Paisagem Tela Cheia */
+    @media (orientation: portrait) {
+      body.mobile-mode #viewport {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vh;
+        width: 100dvh;
+        height: 100vw;
+        transform-origin: top left;
+        transform: rotate(90deg) translateY(-100%);
+      }
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+    #webglCanvas {
+      z-index: 1;
+      pointer-events: none;
+    }
+    #gameCanvas {
+      z-index: 2;
+    }
+    .scanlines {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.18) 50%);
+      background-size: 100% 4px;
+      opacity: 0;
+      display: none;
+      z-index: 10;
+    }
+    .crt-vignette {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0) 74%, rgba(0, 0, 0, 0.30) 100%);
+      z-index: 11;
+    }
+    #app-footer {
+      height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9ab0cc;
+      font-size: 11px;
+      font-weight: bold;
+      letter-spacing: 0.5px;
+      text-shadow: 0 0 8px rgba(0, 229, 255, 0.25);
+      padding: 0 10px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    /* Barra Superior Centralizada: Pausa e Configurações */
+    #top-utility-bar {
+      position: absolute;
+      top: max(6px, env(safe-area-inset-top, 6px));
+      left: 50%;
+      transform: translateX(-50%);
+      right: auto;
+      z-index: 65;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .pause-btn, .gear-btn {
+      width: 28px;
+      height: 28px;
+      background: rgba(10, 16, 28, 0.86);
+      border: 1.5px solid rgba(0, 229, 255, 0.65);
+      border-radius: 50%;
+      color: #00E5FF;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      line-height: 1;
+      touch-action: manipulation;
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.65), 0 0 10px rgba(0, 229, 255, 0.35);
+      transition: transform 0.12s, background 0.12s, color 0.12s, border-color 0.12s;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .pause-btn {
+      display: none; /* Exibido exclusivamente durante as corridas */
+    }
+    .gear-btn {
+      font-size: 15px;
+    }
+    .pause-btn:hover, .gear-btn:hover {
+      background: rgba(14, 24, 42, 0.95);
+      border-color: #80f8ff;
+      transform: scale(1.05);
+    }
+    .pause-btn:active, .pause-btn.active {
+      background: #00b4d8;
+      color: #041019;
+      transform: scale(0.92);
+      border-color: #FFD700;
+    }
+    .gear-btn:active, .gear-btn.active {
+      background: #00b4d8;
+      color: #041019;
+      transform: scale(0.92) rotate(45deg);
+    }
+
+    /* Modal Centralizado Quase Tela Cheia de Configurações e Controles */
+    /* Backdrop escuro que isola a corrida e bloqueia qualquer toque ou clique de vazar ao fundo */
+    #opacity-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(4, 8, 16, 0.85);
+      backdrop-filter: blur(2.5px);
+      -webkit-backdrop-filter: blur(2.5px);
+      z-index: 998;
+      display: none;
+      pointer-events: auto;
+      touch-action: none;
+    }
+
+    #opacity-backdrop.open {
+      display: block;
+    }
+
+    /* Modal Retro Arcade 16-Bit de Configurações e Controles (Top Gear Style) */
+    #opacity-panel {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: min(460px, 94vw);
+      max-height: min(530px, 92vh);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      background: radial-gradient(circle at 50% 15%, #182438, #070d18 85%);
+      border: 3px solid #FFD700;
+      outline: 2px solid #00E5FF;
+      border-radius: 8px;
+      padding: 10px 14px;
+      z-index: 1000;
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      color: #E2E8F0;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.95), 0 0 24px rgba(255, 215, 0, 0.4), inset 0 1px 3px rgba(255, 255, 255, 0.2);
+      pointer-events: auto;
+      font-family: monospace;
+    }
+
+    #opacity-panel::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    #opacity-panel::-webkit-scrollbar-thumb {
+      background: #00E5FF;
+      border-radius: 3px;
+    }
+
+    #opacity-panel::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.45);
+    }
+
+    .panel-section-title {
+      font-size: 8px;
+      font-weight: 900;
+      letter-spacing: 0.8px;
+      color: #FFD700;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8), 0 0 8px rgba(255, 215, 0, 0.4);
+      border-bottom: 1px solid rgba(255, 215, 0, 0.35);
+      padding-bottom: 1px;
+      margin-top: 2px;
+    }
+
+    #opacity-panel.open {
+      display: flex;
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #00E5FF;
+      padding-bottom: 6px;
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.5px;
+      color: #00E5FF;
+      text-shadow: 0 0 10px rgba(0, 229, 255, 0.6);
+    }
+
+    .panel-close {
+      background: linear-gradient(145deg, #EF4444, #B91C1C);
+      border: 1.5px solid #FCA5A5;
+      color: #FFFFFF;
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-size: 10px;
+      font-weight: 900;
+      cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+      touch-action: manipulation;
+      transition: transform 0.08s, background 0.08s;
+    }
+
+    .panel-close:active {
+      transform: scale(0.92);
+      background: #DC2626;
+    }
+
+    .opacity-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .opacity-label-line {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      font-weight: 900;
+      color: #CBD5E1;
+    }
+
+    .opacity-val {
+      color: #FFD700;
+      font-weight: 900;
+    }
+
+    .slider-controls {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .step-btn {
+      width: 24px;
+      height: 22px;
+      background: linear-gradient(180deg, #24344D, #121C2B);
+      border: 1.5px solid #FFD700;
+      border-radius: 4px;
+      color: #FFD700;
+      font-weight: 900;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.6);
+      transition: transform 0.08s, background 0.08s;
+    }
+
+    .step-btn:active {
+      background: #FFD700;
+      color: #080D16;
+      transform: scale(0.92);
+    }
+
+    .custom-slider {
+      flex: 1;
+      height: 20px;
+      display: flex;
+      align-items: center;
+      cursor: pointer;
+      position: relative;
+      touch-action: none;
+    }
+
+    .custom-slider-track {
+      width: 100%;
+      height: 8px;
+      background: #080D16;
+      border: 1px solid #00E5FF;
+      border-radius: 4px;
+      position: relative;
+      overflow: hidden;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.8);
+    }
+
+    .custom-slider-fill {
+      height: 100%;
+      background: repeating-linear-gradient(90deg, #00B4D8 0px, #00B4D8 4px, #030812 4px, #030812 6px);
+      width: 78%;
+    }
+
+    .custom-slider-thumb {
+      position: absolute;
+      top: 2px;
+      width: 16px;
+      height: 16px;
+      margin-left: -8px;
+      border-radius: 3px;
+      background: linear-gradient(145deg, #FFE082, #FFB300);
+      border: 1.5px solid #FFFFFF;
+      box-shadow: 0 0 8px rgba(255, 215, 0, 0.9), 0 2px 4px rgba(0, 0, 0, 0.7);
+      pointer-events: none;
+      left: 78%;
+    }
+
+    .preset-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px;
+      padding-top: 2px;
+    }
+
+    .preset-btn {
+      flex: 1;
+      background: #0E1624;
+      border: 1px solid #1E2D44;
+      border-radius: 4px;
+      color: #94A3B8;
+      font-family: inherit;
+      font-size: 8.5px;
+      font-weight: 900;
+      padding: 4px 0;
+      cursor: pointer;
+      text-align: center;
+      touch-action: manipulation;
+      transition: background 0.08s, color 0.08s;
+    }
+
+    .preset-btn:active {
+      background: #00E5FF;
+      color: #040D1A;
+    }
+
+    .panel-help-box {
+      font-size: 8.5px;
+      color: #CBD5E1;
+      background: rgba(6, 10, 18, 0.88);
+      border: 1px solid rgba(0, 229, 255, 0.35);
+      border-left: 3px solid #00E5FF;
+      border-radius: 4px;
+      padding: 6px 8px;
+      line-height: 1.5;
+      font-family: monospace;
+      box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-footer-actions {
+      display: flex;
+      gap: 6px;
+      border-top: 1px solid rgba(255, 215, 0, 0.25);
+      padding-top: 6px;
+    }
+
+    .panel-action-btn {
+      flex: 1;
+      background: linear-gradient(180deg, #1A2638, #0E1624);
+      border: 1.5px solid #00E5FF;
+      border-radius: 4px;
+      color: #00E5FF;
+      font-family: inherit;
+      font-size: 9px;
+      font-weight: 900;
+      padding: 6px 4px;
+      cursor: pointer;
+      text-align: center;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+      touch-action: manipulation;
+      transition: transform 0.08s, background 0.08s;
+    }
+
+    .panel-action-btn:active {
+      transform: scale(0.94);
+      background: #00E5FF;
+      color: #030A12;
+    }
+
+    .panel-action-btn.off {
+      background: linear-gradient(180deg, #3A151C, #200B10);
+      border-color: #EF4444;
+      color: #FCA5A5;
+    }
+
+    .panel-action-resume {
+      background: linear-gradient(180deg, #15803D, #052E16);
+      border-color: #4ADE80;
+      color: #FFFFFF;
+      font-size: 9.5px;
+      letter-spacing: 0.3px;
+      box-shadow: 0 0 12px rgba(74, 222, 128, 0.4), 0 2px 6px rgba(0, 0, 0, 0.6);
+    }
+
+    .panel-action-resume:active {
+      background: #22C55E;
+      color: #052E16;
+      transform: scale(0.94);
+    }
+
+    /* =========================================================
+       CONTROLES VIRTUAIS ARCADE NOS CANTOS INFERIORES
+       ========================================================= */
+    #touch-controls {
+      position: absolute;
+      inset: 0;
+      display: none;
+      z-index: 50;
+      pointer-events: none;
+    }
+    body.mobile-mode #touch-controls {
+      display: block;
+    }
+
+    /* ESQUERDA INFERIOR: Apenas Setas Esquerda (◀) e Direita (▶) */
+    #dpad-cluster {
+      position: absolute;
+      left: max(14px, env(safe-area-inset-left, 14px));
+      bottom: max(12px, env(safe-area-inset-bottom, 12px));
+      opacity: var(--dpad-opacity);
+      pointer-events: auto;
+      touch-action: none;
+      transform-origin: bottom left;
+      transform: scale(var(--controls-scale, 1.0));
+    }
+    #steer-pair {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .steer-arrow-btn {
+      width: clamp(54px, 14.2vmin, 68px);
+      height: clamp(54px, 14.2vmin, 68px);
+      border-radius: 16px;
+      background: linear-gradient(145deg, #2c3342, #161a24);
+      border: 2px solid rgba(190, 200, 218, 0.45);
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.18), 0 4px 12px rgba(0, 0, 0, 0.55);
+      color: #dff8ff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: none;
+      transition: background 0.06s, transform 0.06s, color 0.06s;
+    }
+    .steer-arrow-btn .steer-icon {
+      font-size: clamp(20px, 5.2vmin, 26px);
+      line-height: 1;
+      font-weight: 900;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85);
+    }
+    .steer-arrow-btn .steer-label {
+      font-size: clamp(7.5px, 1.9vmin, 9px);
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      opacity: 0.85;
+      margin-top: 2px;
+    }
+    .steer-arrow-btn.active {
+      background: linear-gradient(145deg, #00b4d8, #0077b6);
+      color: #ffffff;
+      transform: scale(0.92);
+      box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6), 0 0 16px rgba(0, 229, 255, 0.7);
+      border-color: #80f8ff;
+    }
+
+    /* DIREITA INFERIOR: Botões A, B, X, Y Padrão Xbox Diamond */
+    #buttons-cluster {
+      position: absolute;
+      right: max(8px, env(safe-area-inset-right, 8px));
+      bottom: max(6px, env(safe-area-inset-bottom, 6px));
+      width: clamp(126px, 32vmin, 156px);
+      height: clamp(126px, 32vmin, 156px);
+      border-radius: 50%;
+      background: radial-gradient(circle at 50% 50%, rgba(28, 35, 48, 0.52), rgba(12, 16, 24, 0.72));
+      border: 2px solid rgba(190, 200, 216, 0.32);
+      box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.6), 0 4px 14px rgba(0, 0, 0, 0.5);
+      opacity: var(--btns-opacity);
+      pointer-events: auto;
+      touch-action: none;
+      transform-origin: bottom right;
+      transform: scale(var(--controls-scale, 1.0));
+    }
+    .xbox-btn {
+      position: absolute;
+      width: clamp(38px, 9.8vmin, 47px);
+      height: clamp(38px, 9.8vmin, 47px);
+      border-radius: 50%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      border: 2px solid rgba(15, 18, 26, 0.9);
+      color: #ffffff;
+      box-shadow: inset 0 2px 3px rgba(255, 255, 255, 0.32), 0 3px 8px rgba(0, 0, 0, 0.65);
+      touch-action: none;
+      cursor: pointer;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .xbox-btn .btn-letter {
+      font-size: clamp(15px, 3.8vmin, 18px);
+      font-weight: 900;
+      line-height: 1;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+      font-family: 'Segoe UI', Impact, Arial, sans-serif;
+    }
+    .xbox-btn .btn-sub {
+      font-size: clamp(5.8px, 1.45vmin, 7.2px);
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      line-height: 1;
+      margin-top: 1px;
+      opacity: 0.95;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+    }
+    /* Botão Y: NITRO (Amarelo / Dourado Turbo) — Topo */
+    #btn-y {
+      top: 3%;
+      left: 50%;
+      transform: translateX(-50%);
+      background: radial-gradient(circle at 35% 30%, #f59e0b, #b45309 78%);
+      border-color: #fde047;
+    }
+    #btn-y.active {
+      background: #fbbf24;
+      color: #3b1802;
+      transform: translateX(-50%) scale(0.92);
+      box-shadow: 0 0 14px rgba(245, 158, 11, 0.95), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    /* Botão X: FREIO (Vermelho) — Esquerda */
+    #btn-x {
+      left: 3%;
+      top: 50%;
+      transform: translateY(-50%);
+      background: radial-gradient(circle at 35% 30%, #ef4444, #991b1b 78%);
+      border-color: #fca5a5;
+    }
+    #btn-x.active {
+      background: #dc2626;
+      color: #ffffff;
+      transform: translateY(-50%) scale(0.92);
+      box-shadow: 0 0 14px rgba(239, 68, 68, 0.95), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    /* Botão B: HUD F1 (Azul / Ciano F1) — Direita */
+    #btn-b {
+      right: 3%;
+      top: 50%;
+      transform: translateY(-50%);
+      background: radial-gradient(circle at 35% 30%, #0284c7, #075985 78%);
+      border-color: #38bdf8;
+    }
+    #btn-b.active {
+      background: #00e5ff;
+      color: #042f2e;
+      transform: translateY(-50%) scale(0.92);
+      box-shadow: 0 0 14px rgba(0, 229, 255, 0.95), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    /* Botão A: ACELERA (Verde) — Base (Destaque Ergonômico) */
+    #btn-a {
+      bottom: 3%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: clamp(40px, 10.3vmin, 49px);
+      height: clamp(40px, 10.3vmin, 49px);
+      background: radial-gradient(circle at 35% 30%, #22c55e, #15803d 78%);
+      border-color: #86efac;
+    }
+    #btn-a.active {
+      background: #16a34a;
+      color: #052e16;
+      transform: translateX(-50%) scale(0.92);
+      box-shadow: 0 0 14px rgba(34, 197, 94, 0.95), inset 0 2px 4px rgba(0, 0, 0, 0.4);
+    }
+    /* Campo de Nome do Piloto no Menu Principal */
+    #player-name-wrapper {
+      position: absolute;
+      top: 52%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 196px;
+      z-index: 45;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+    #player-name-wrapper.show {
+      display: flex;
+    }
+    #player-name-input {
+      width: 100%;
+      background: rgba(8, 14, 26, 0.95);
+      border: 2px solid #00E5FF;
+      border-radius: 4px;
+      color: #FFD700;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 14px;
+      font-weight: bold;
+      text-align: center;
+      text-transform: uppercase;
+      padding: 5px 8px;
+      letter-spacing: 1.5px;
+      box-shadow: 0 0 14px rgba(0, 229, 255, 0.45);
+      outline: none;
+    }
+    #player-name-input:focus {
+      border-color: #ffd700;
+      box-shadow: 0 0 14px rgba(255, 215, 0, 0.6);
+    }

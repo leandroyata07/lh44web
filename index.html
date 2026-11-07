@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>LH44 - Low to High Speed</title>
+  <link rel="stylesheet" href="css/style.css?v=20261106_v5">
+</head>
+
+<body>
+  <div id="viewport">
+    <canvas id="webglCanvas" width="384" height="216"></canvas>
+    <canvas id="gameCanvas" width="384" height="216"></canvas>
+    <div class="scanlines"></div>
+    <div class="crt-vignette"></div>
+    <!-- Entrada do Nome do Piloto -->
+    <div id="player-name-wrapper">
+      <input id="player-name-input" type="text" maxlength="12" value="JOGADOR" placeholder="JOGADOR" spellcheck="false"
+        autocomplete="off" />
+    </div>
+
+    <div id="top-utility-bar">
+      <button class="pause-btn" id="pause-btn" title="Pausar / Continuar Jogo">⏸</button>
+      <button class="gear-btn" id="gear-btn" title="Configurações e Controles">⚙</button>
+    </div>
+
+    <!-- Backdrop escuro que isola e bloqueia toques na pista quando o menu abre -->
+    <div id="opacity-backdrop"></div>
+
+    <!-- Modal de Configurações, Tela Cheia e Controles (Acessível pela Engrenagem ⚙) -->
+    <div id="opacity-panel">
+      <div class="panel-header">
+        <span>⚙ CONFIGURAÇÕES &amp; CONTROLES</span>
+        <button class="panel-close" id="opacity-close-btn" title="Fechar / Voltar ao Jogo">✕</button>
+      </div>
+
+      <div class="panel-section-title">TAMANHO DOS CONTROLES VIRTUAIS</div>
+      <div class="opacity-row">
+        <div class="opacity-label-line">
+          <span>ESCALA DOS CONTROLES</span>
+          <span class="opacity-val" id="ctrl-scale-val">100%</span>
+        </div>
+        <div class="slider-controls">
+          <button class="step-btn" id="scale-minus" type="button" title="Diminuir tamanho">−</button>
+          <div class="custom-slider" id="scale-slider">
+            <div class="custom-slider-track">
+              <div class="custom-slider-fill" id="scale-slider-fill"></div>
+            </div>
+            <div class="custom-slider-thumb" id="scale-slider-thumb"></div>
+          </div>
+          <button class="step-btn" id="scale-plus" type="button" title="Aumentar tamanho">+</button>
+        </div>
+      </div>
+
+      <div class="panel-section-title">OPACIDADE DOS CONTROLES TOUCH</div>
+      <div class="opacity-row">
+        <div class="opacity-label-line">
+          <span>SETAS DIRECIONAIS (ESQ / DIR)</span>
+          <span class="opacity-val" id="dpad-opacity-val">78%</span>
+        </div>
+        <div class="slider-controls">
+          <button class="step-btn" id="dpad-minus" type="button">−</button>
+          <div class="custom-slider" id="dpad-slider">
+            <div class="custom-slider-track">
+              <div class="custom-slider-fill" id="dpad-slider-fill"></div>
+            </div>
+            <div class="custom-slider-thumb" id="dpad-slider-thumb"></div>
+          </div>
+          <button class="step-btn" id="dpad-plus" type="button">+</button>
+        </div>
+      </div>
+
+      <div class="opacity-row">
+        <div class="opacity-label-line">
+          <span>BOTÕES XBOX (A, B, X, Y)</span>
+          <span class="opacity-val" id="btns-opacity-val">78%</span>
+        </div>
+        <div class="slider-controls">
+          <button class="step-btn" id="btns-minus" type="button">−</button>
+          <div class="custom-slider" id="btns-slider">
+            <div class="custom-slider-track">
+              <div class="custom-slider-fill" id="btns-slider-fill"></div>
+            </div>
+            <div class="custom-slider-thumb" id="btns-slider-thumb"></div>
+          </div>
+          <button class="step-btn" id="btns-plus" type="button">+</button>
+        </div>
+      </div>
+
+      <div class="preset-row">
+        <button class="preset-btn" data-preset="0.25" type="button">25%</button>
+        <button class="preset-btn" data-preset="0.50" type="button">50%</button>
+        <button class="preset-btn" data-preset="0.75" type="button">75%</button>
+        <button class="preset-btn" data-preset="1.00" type="button">100%</button>
+      </div>
+
+      <div class="panel-section-title">JOYSTICK &amp; TECLADO</div>
+      <div class="panel-help-box">
+        <div>🎮 <b>R2 (RT) / Seta Cima</b>: Acelerador</div>
+        <div>🛑 <b>L2 (LT) / Seta Baixo</b>: Freio</div>
+        <div>🚀 <b>Botão A / Espaço / N</b>: Nitro</div>
+        <div>⏱ <b>Botão X / Tecla X / Tab</b>: Classificação F1</div>
+        <div>🕹 <b>Analógico Esq. / Setas</b>: Direção (Esq/Dir)</div>
+        <div>⚙ <b>Select / Tecla C / ⚙</b>: Abrir / Fechar Configurações</div>
+        <div>⏸ <b>Start / ESC / P</b>: Pausar / Retomar Corrida</div>
+      </div>
+
+      <div class="panel-section-title">ÁUDIO DO JOGO</div>
+      <div class="panel-footer-actions" style="border-top: none; padding-top: 0; margin-bottom: 4px;">
+        <button class="panel-action-btn" id="music-toggle-btn" type="button" title="Ativar ou desativar músicas">MÚSICA: ON</button>
+        <button class="panel-action-btn" id="sfx-toggle-btn" type="button" title="Ativar ou desativar efeitos sonoros">SFX: ON</button>
+      </div>
+
+      <div class="panel-section-title">DESEMPENHO &amp; TAXA DE QUADROS</div>
+      <div class="panel-footer-actions" style="border-top: none; padding-top: 0; margin-bottom: 4px;">
+        <button class="panel-action-btn" id="fps-limit-btn" type="button" title="Limitar a 60 FPS ou deixar aberto">TRAVA: 60 FPS</button>
+        <button class="panel-action-btn" id="vsync-btn" type="button" title="Sincronização vertical (VSync)">VSYNC: LIGADO</button>
+      </div>
+
+      <div class="panel-footer-actions">
+        <button class="panel-action-btn" id="panel-fullscreen-btn" type="button">⛶ TELA CHEIA</button>
+        <button class="panel-action-btn" id="touch-toggle-btn" type="button">CONTROLES: ON</button>
+        <button class="panel-action-btn" id="fps-toggle-btn" type="button">HUD FPS: OFF</button>
+        <button class="panel-action-btn panel-action-resume" id="panel-resume-btn" type="button">▶ CONTINUAR</button>
+      </div>
+    </div>
+
+    <div id="touch-controls">
+      <!-- Canto Inferior Esquerdo: Apenas Setas Esquerda (◀) e Direita (▶) -->
+      <div id="dpad-cluster">
+        <div id="steer-pair">
+          <div class="steer-arrow-btn" id="dpad-left" title="Virar à Esquerda">
+            <span class="steer-icon">◀</span>
+            <span class="steer-label">ESQ</span>
+          </div>
+          <div class="steer-arrow-btn" id="dpad-right" title="Virar à Direita">
+            <span class="steer-icon">▶</span>
+            <span class="steer-label">DIR</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Canto Inferior Direito: Botões Xbox Diamond (Y: Nitro, X: Freio, B: HUD F1, A: Acelera) -->
+      <div id="buttons-cluster">
+        <div class="xbox-btn" id="btn-y">
+          <span class="btn-letter">Y</span>
+          <span class="btn-sub">NITRO</span>
+        </div>
+        <div class="xbox-btn" id="btn-x">
+          <span class="btn-letter">X</span>
+          <span class="btn-sub">FREIO</span>
+        </div>
+        <div class="xbox-btn" id="btn-b">
+          <span class="btn-letter">B</span>
+          <span class="btn-sub">HUD F1</span>
+        </div>
+        <div class="xbox-btn" id="btn-a">
+          <span class="btn-letter">A</span>
+          <span class="btn-sub">ACELERA</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts modulares do jogo (Zero dependências, 100% compatível com GitHub Pages e execução local) -->
+  <script src="js/constants.js?v=20261106_v15"></script>
+  <script src="js/audio.js?v=20261106_v15"></script>
+  <script src="js/particles.js?v=20261106_v15"></script>
+  <script src="js/input.js?v=20261106_v15"></script>
+  <script src="js/cars.js?v=20261106_v15"></script>
+  <script src="js/monuments.js?v=20261106_v15"></script>
+  <script src="js/tracks.js?v=20261106_v15"></script>
+  <script src="js/webgl_renderer.js"></script>
+  <script src="js/game.js?v=20261106_v15"></script>
+  <script src="js/main.js?v=20261106_v15"></script>
+</body>
+
+</html>
