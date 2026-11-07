@@ -36,6 +36,7 @@
       }
 
       const gl = this.gl;
+      this.isWebGL2 = (typeof WebGL2RenderingContext !== 'undefined' && gl instanceof WebGL2RenderingContext);
       this.available = true;
       this.colorCache = new Map();
 
@@ -252,7 +253,11 @@
       gl.uniform2f(this.colorUniformRes, this.width, this.height);
 
       gl.bindBuffer(gl.ARRAY_BUFFER, this.colorBuffer);
-      gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.colorData.subarray(0, this.colorVertCount * 6));
+      if (this.isWebGL2) {
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.colorData, 0, this.colorVertCount * 6);
+      } else {
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, this.colorData.subarray(0, this.colorVertCount * 6));
+      }
 
       const stride = 6 * 4; // 6 floats de 4 bytes
       gl.enableVertexAttribArray(this.colorAttribPos);

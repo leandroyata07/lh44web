@@ -609,19 +609,15 @@
         ctx.clip();
 
         // 1. Ranhuras horizontais em rolamento sutil
-        ctx.fillStyle = `rgba(6, 8, 12, ${0.45 + blurIntensity * 0.25})`;
+        ctx.fillStyle = 'rgba(6, 8, 12, 0.55)';
         for (let gy = tire.y - stepH + rollOffset; gy < tire.y + tire.h + stepH; gy += stepH) {
           ctx.fillRect(tire.x, gy, tire.w, lineH);
         }
 
-        // 2. Reflexo dinâmico de rotação da borracha (shimmer sutil)
+        // 2. Reflexo dinâmico de rotação da borracha (shimmer sutil sem alocação de gradiente)
         const shineY = tire.y + ((phase * 12) % tire.h);
-        const shineGrad = ctx.createLinearGradient(0, shineY - 1, 0, shineY + 2);
-        shineGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-        shineGrad.addColorStop(0.5, `rgba(255, 255, 255, ${(0.04 + blurIntensity * 0.06).toFixed(3)})`);
-        shineGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-        ctx.fillStyle = shineGrad;
-        ctx.fillRect(tire.x, tire.y, tire.w, tire.h);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.08)';
+        ctx.fillRect(tire.x, shineY, tire.w, Math.max(0.6, lineH));
 
         ctx.restore();
       }

@@ -12,3 +12,4 @@
 
 ## 🚀 Como Jogar
 Basta abrir o arquivo `index.html` em qualquer navegador web moderno.
+

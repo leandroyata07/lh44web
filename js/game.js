@@ -1,3 +1,16 @@
+  const carDepthComparator = (a, b) => b.renderRelCamZ - a.renderRelCamZ;
+
+  const PINE_LAYER_RATIOS = [
+    { yR: -0.94, rxR: 0.46, ryR: 0.13, cNight: '#0A1D13', cDusk: '#1B3322', cDay: '#143C25' },
+    { yR: -0.98, rxR: 0.36, ryR: 0.10, cNight: '#0F281B', cDusk: '#23442D', cDay: '#1C5233' },
+    { yR: -0.80, rxR: 0.29, ryR: 0.08, cNight: '#143624', cDusk: '#2F5C3E', cDay: '#267347' },
+    { yR: -0.64, rxR: 0.23, ryR: 0.06, cNight: '#122F20', cDusk: '#254E33', cDay: '#1E5E3A' }
+  ];
+
+  const PALM_FROND_COLS_NIGHT = ['#0A1C12', '#0E291B', '#133925', '#1B4A31'];
+  const PALM_FROND_COLS_DUSK  = ['#1C331B', '#274724', '#385C2E', '#4B7337'];
+  const PALM_FROND_COLS_DAY   = ['#1B5E20', '#2E7D32', '#388E3C', '#4CAF50'];
+
   class Car {
     constructor(id, model, isPlayer = false) {
       this.id = id;
@@ -272,28 +285,28 @@
       this.confetti = [];
       this.showFPS = false;
       try { this.showFPS = (localStorage.getItem('lh44_show_fps') === 'true'); } catch (_) {}
-      this.fps = 60;
+      this.fps = 120;
       this.fpsFrames = 0;
       this.fpsLastTime = performance.now();
       this.lastRenderTime = performance.now();
 
-      // Limite de FPS: 60 FPS cravados vs Aberto (taxa nativa da tela como 120Hz)
-      this.fpsLimit = 60;
+      // Limite de FPS: Aberto (taxa nativa de 100Hz/120Hz/alta fluidez) vs 60 FPS
+      this.fpsLimit = 0;
       try {
         const savedLimit = localStorage.getItem('lh44_fps_limit');
-        if (savedLimit === 'open') {
+        if (savedLimit === '60') {
+          this.fpsLimit = 60;
+        } else if (savedLimit === 'open' || savedLimit === '120') {
           this.fpsLimit = 0;
-        } else if (savedLimit === '60') {
-          this.fpsLimit = 60;
         } else {
-          this.fpsLimit = 60;
+          this.fpsLimit = 0;
         }
       } catch (_) {}
 
       const fpsLimitBtn = document.getElementById('fps-limit-btn');
       if (fpsLimitBtn) {
         const updateFpsLimitBtn = () => {
-          fpsLimitBtn.textContent = (this.fpsLimit === 60) ? 'TRAVA: 60 FPS' : 'TRAVA: ABERTO';
+          fpsLimitBtn.textContent = (this.fpsLimit === 60) ? 'TRAVA: 60 FPS' : 'TRAVA: ABERTO (120 FPS)';
           fpsLimitBtn.style.color = (this.fpsLimit === 60) ? '#00E5FF' : '#FFD700';
           fpsLimitBtn.style.borderColor = (this.fpsLimit === 60) ? '#00B4D8' : '#FFA000';
         };
@@ -353,7 +366,7 @@
         fpsBtn.addEventListener('click', toggleFps);
         fpsBtn.addEventListener('touchstart', (e) => { e.preventDefault(); toggleFps(e); }, { passive: false });
       }
-      this.fixedStep = 1 / 60;
+      this.fixedStep = 1 / 120;
       this.accumulator = 0;
       this.initSeasonRoster();
 
@@ -986,17 +999,17 @@
       p.screen.w = (p.screen.scale * ROAD_WIDTH * REF_WIDTH / 2);
     }
 
-    projectInterpolated(seg, pct) {
+    projectInterpolated(seg, pct, targetObj = null) {
       const depth = this.currentCameraDepth || CAMERA_DEPTH;
       const camX = (1 - pct) * seg.p1.camera.x + pct * seg.p2.camera.x;
       const camY = (1 - pct) * seg.p1.camera.y + pct * seg.p2.camera.y;
       const camZ = Math.max(depth + 1, (1 - pct) * seg.p1.camera.z + pct * seg.p2.camera.z);
       const scale = depth / camZ;
-      return {
-        x: (INTERNAL_WIDTH / 2) + (scale * camX * REF_WIDTH / 2),
-        y: (INTERNAL_HEIGHT / 2) - (scale * camY * INTERNAL_HEIGHT / 2),
-        w: scale * ROAD_WIDTH * REF_WIDTH / 2
-      };
+      const res = targetObj || this._interpResult || (this._interpResult = { x: 0, y: 0, w: 0 });
+      res.x = (INTERNAL_WIDTH / 2) + (scale * camX * REF_WIDTH / 2);
+      res.y = (INTERNAL_HEIGHT / 2) - (scale * camY * INTERNAL_HEIGHT / 2);
+      res.w = scale * ROAD_WIDTH * REF_WIDTH / 2;
+      return res;
     }
 
     // ==========================================
@@ -3361,11 +3374,17 @@
       const isNight = this.envCur ? ((this.envCur.s.night || 0) > 0.28) : false;
       const isDusk = this.envCur ? ((this.envCur.s.dusk || 0) > 0.25) : false;
 
-      // Neblina atmosférica sutil na linha do horizonte para profundidade
-      const hazeGrad = ctx.createLinearGradient(0, INTERNAL_HEIGHT / 2 - 4, 0, INTERNAL_HEIGHT / 2 + 10);
-      hazeGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
-      hazeGrad.addColorStop(0.45, isNight ? 'rgba(0, 180, 216, 0.12)' : (isDusk ? 'rgba(255, 140, 80, 0.22)' : 'rgba(220, 242, 255, 0.22)'));
-      hazeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      // Neblina atmosférica sutil na linha do horizonte para profundidade (gradiente cacheado)
+      if (!this._hazeGradients) this._hazeGradients = {};
+      const hazeKey = isNight ? 'night' : (isDusk ? 'dusk' : 'day');
+      let hazeGrad = this._hazeGradients[hazeKey];
+      if (!hazeGrad) {
+        hazeGrad = ctx.createLinearGradient(0, INTERNAL_HEIGHT / 2 - 4, 0, INTERNAL_HEIGHT / 2 + 10);
+        hazeGrad.addColorStop(0, 'rgba(255, 255, 255, 0)');
+        hazeGrad.addColorStop(0.45, isNight ? 'rgba(0, 180, 216, 0.12)' : (isDusk ? 'rgba(255, 140, 80, 0.22)' : 'rgba(220, 242, 255, 0.22)'));
+        hazeGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        this._hazeGradients[hazeKey] = hazeGrad;
+      }
       ctx.fillStyle = hazeGrad;
       ctx.fillRect(-20, INTERNAL_HEIGHT / 2 - 4, INTERNAL_WIDTH + 40, 14);
 
@@ -3443,8 +3462,8 @@
         }
 
         // Rivais porta-a-porta levemente atrás do para-choque do jogador
-        if (this.foregroundBots && this.foregroundBots.length > 0) {
-          for (let i = 0; i < this.foregroundBots.length; i++) {
+        if (this.foregroundBots && this.foregroundBotsCount > 0) {
+          for (let i = 0; i < this.foregroundBotsCount; i++) {
             const fb = this.foregroundBots[i];
             fb.bot.model.render(
               ctx,
@@ -3604,18 +3623,26 @@
       const tilt = steer * 14;
       const alpha = Math.min(1, Math.max(0, intensity));
 
-      // Facho de iluminacao circular/oval no asfalto em frente ao carro do jogador
+      // Facho de iluminação circular/oval no asfalto em frente ao carro do jogador (stamp pré-renderizado)
       const poolY = py - 30;
-      const poolGrad = ctx.createRadialGradient(px + tilt * 0.5, poolY, 4, px + tilt * 0.5, poolY, 75);
-      poolGrad.addColorStop(0, `rgba(255, 255, 235, ${(0.45 * alpha).toFixed(3)})`);
-      poolGrad.addColorStop(0.35, `rgba(235, 248, 255, ${(0.26 * alpha).toFixed(3)})`);
-      poolGrad.addColorStop(0.70, `rgba(195, 230, 255, ${(0.11 * alpha).toFixed(3)})`);
-      poolGrad.addColorStop(1, 'rgba(180, 220, 255, 0)');
-      ctx.fillStyle = poolGrad;
-      ctx.beginPath();
-      ctx.ellipse(px + tilt * 0.5, poolY, 68, 25, 0, 0, Math.PI * 2);
-      ctx.fill();
-
+      if (!this._playerHeadlightStamp) {
+        const sc = document.createElement('canvas');
+        sc.width = 160; sc.height = 64;
+        const sctx = sc.getContext('2d');
+        const poolGrad = sctx.createRadialGradient(80, 32, 4, 80, 32, 75);
+        poolGrad.addColorStop(0, 'rgba(255, 255, 235, 0.45)');
+        poolGrad.addColorStop(0.35, 'rgba(235, 248, 255, 0.26)');
+        poolGrad.addColorStop(0.70, 'rgba(195, 230, 255, 0.11)');
+        poolGrad.addColorStop(1, 'rgba(180, 220, 255, 0)');
+        sctx.fillStyle = poolGrad;
+        sctx.beginPath();
+        sctx.ellipse(80, 32, 68, 25, 0, 0, Math.PI * 2);
+        sctx.fill();
+        this._playerHeadlightStamp = sc;
+      }
+      if (alpha < 0.98) ctx.globalAlpha = alpha;
+      ctx.drawImage(this._playerHeadlightStamp, (px + tilt * 0.5) - 80, poolY - 32, 160, 64);
+      if (alpha < 0.98) ctx.globalAlpha = 1.0;
       ctx.restore();
     }
 
@@ -3625,20 +3652,27 @@
       const tilt = steer * w * 0.20;
       const alpha = Math.min(1, Math.max(0, intensity));
 
-      // Facho de iluminacao circular/oval no asfalto em frente ao carro adversario
+      // Facho de iluminação circular/oval no asfalto em frente ao carro adversário (stamp pré-renderizado)
       const poolY = y - h * 0.35;
       const radiusX = Math.max(6, w * 0.65);
       const radiusY = Math.max(2, h * 0.28);
-      const innerR = Math.min(2, radiusX * 0.2);
-      const poolGrad = ctx.createRadialGradient(x + tilt, poolY, innerR, x + tilt, poolY, radiusX);
-      poolGrad.addColorStop(0, `rgba(255, 252, 230, ${(0.38 * alpha).toFixed(3)})`);
-      poolGrad.addColorStop(0.40, `rgba(230, 245, 255, ${(0.20 * alpha).toFixed(3)})`);
-      poolGrad.addColorStop(1, 'rgba(190, 225, 255, 0)');
-      ctx.fillStyle = poolGrad;
-      ctx.beginPath();
-      ctx.ellipse(x + tilt, poolY, radiusX, radiusY, 0, 0, Math.PI * 2);
-      ctx.fill();
-
+      if (!this._botHeadlightStamp) {
+        const sc = document.createElement('canvas');
+        sc.width = 128; sc.height = 64;
+        const sctx = sc.getContext('2d');
+        const poolGrad = sctx.createRadialGradient(64, 32, 2, 64, 32, 64);
+        poolGrad.addColorStop(0, 'rgba(255, 252, 230, 0.38)');
+        poolGrad.addColorStop(0.40, 'rgba(230, 245, 255, 0.20)');
+        poolGrad.addColorStop(1, 'rgba(190, 225, 255, 0)');
+        sctx.fillStyle = poolGrad;
+        sctx.beginPath();
+        sctx.ellipse(64, 32, 64, 32, 0, 0, Math.PI * 2);
+        sctx.fill();
+        this._botHeadlightStamp = sc;
+      }
+      if (alpha < 0.98) ctx.globalAlpha = alpha;
+      ctx.drawImage(this._botHeadlightStamp, (x + tilt) - radiusX, poolY - radiusY, radiusX * 2, radiusY * 2);
+      if (alpha < 0.98) ctx.globalAlpha = 1.0;
       ctx.restore();
     }
 
@@ -4455,9 +4489,8 @@
         for (let i = 0; i < n; i++) {
           const x = ((i * 61.7 + t * 14 + Math.sin(t * 0.9 + i) * 9) % (W + 20) + (W + 20)) % (W + 20) - 10;
           const y = ((i * 83.3 + t * (32 + (i % 4) * 11)) % (H + 10)) - 5;
-          ctx.beginPath();
-          ctx.arc(x, y, 0.7 + (i % 3) * 0.45, 0, Math.PI * 2);
-          ctx.fill();
+          const s = 1.4 + (i % 3) * 0.8;
+          ctx.fillRect(x, y, s, s);
         }
       }
       if (S.glare > 0.02 && S.sun > 0.1) {
@@ -4495,7 +4528,7 @@
       let x = 0;
       let maxY = INTERNAL_HEIGHT;
       if (!this.foregroundBots) this.foregroundBots = [];
-      else this.foregroundBots.length = 0;
+      this.foregroundBotsCount = 0;
 
       const totalSegs = this.track.segments.length;
       for (let n = 0; n < DRAW_DISTANCE; n++) {
@@ -4604,7 +4637,7 @@
 
         if (segment.cars && segment.cars.length > 0) {
           if (segment.cars.length > 1) {
-            segment.cars.sort((a, b) => b.renderRelCamZ - a.renderRelCamZ);
+            segment.cars.sort(carDepthComparator);
           }
 
           for (let c = 0; c < segment.cars.length; c++) {
@@ -4624,7 +4657,13 @@
 
             if (carW > 3.5 && carH > 2.5) {
               if (bot.renderRelCamZ < PLAYER_Z_OFFSET) {
-                this.foregroundBots.push({ bot, x: carX, y: carY, w: carW, h: carH });
+                if (this.foregroundBots.length <= this.foregroundBotsCount) {
+                  this.foregroundBots.push({ bot, x: carX, y: carY, w: carW, h: carH });
+                } else {
+                  const fb = this.foregroundBots[this.foregroundBotsCount];
+                  fb.bot = bot; fb.x = carX; fb.y = carY; fb.w = carW; fb.h = carH;
+                }
+                this.foregroundBotsCount++;
               } else {
                 const needClip = cRoadY > segment.clipY;
                 if (needClip) {
@@ -4863,14 +4902,23 @@
             const lampW = Math.max(2, p1.w * 0.08);
             ctx.fillStyle = '#FFA726';
             ctx.fillRect(p1.x - lampW * 0.5, roofY1, lampW, Math.max(1.5, wallH1 * 0.06));
-            // Brilho dourado no asfalto
-            const spotGrad = ctx.createRadialGradient(p1.x, p1.y - 4, 2, p1.x, p1.y - 4, p1.w * 0.5);
-            spotGrad.addColorStop(0, 'rgba(255, 183, 77, 0.22)');
-            spotGrad.addColorStop(1, 'rgba(255, 183, 77, 0)');
-            ctx.fillStyle = spotGrad;
-            ctx.beginPath();
-            ctx.ellipse(p1.x, p1.y - 4, p1.w * 0.5, Math.max(2, (segBottomY - topY) * 2), 0, 0, Math.PI * 2);
-            ctx.fill();
+            // Brilho dourado no asfalto (stamp pré-renderizado)
+            if (!this._tunnelLampStamp) {
+              const tc = document.createElement('canvas');
+              tc.width = 128; tc.height = 64;
+              const tctx = tc.getContext('2d');
+              const spotGrad = tctx.createRadialGradient(64, 32, 2, 64, 32, 64);
+              spotGrad.addColorStop(0, 'rgba(255, 183, 77, 0.22)');
+              spotGrad.addColorStop(1, 'rgba(255, 183, 77, 0)');
+              tctx.fillStyle = spotGrad;
+              tctx.beginPath();
+              tctx.ellipse(64, 32, 64, 32, 0, 0, Math.PI * 2);
+              tctx.fill();
+              this._tunnelLampStamp = tc;
+            }
+            const srx = p1.w * 0.5;
+            const sry = Math.max(2, (segBottomY - topY) * 2);
+            ctx.drawImage(this._tunnelLampStamp, p1.x - srx, (p1.y - 4) - sry, srx * 2, sry * 2);
           }
         } else {
           // Túnel Metro: Tiras contínuas de LED Neon no centro do teto
@@ -4964,21 +5012,28 @@
       this.drawPoly(ctx, p1.x - p1.w * 0.55, segBottomY, p1.x - p1.w * 0.18, segBottomY, p2.x - p2.w * 0.18, topY, p2.x - p2.w * 0.55, topY, grooveCol);
       this.drawPoly(ctx, p1.x + p1.w * 0.18, segBottomY, p1.x + p1.w * 0.55, segBottomY, p2.x + p2.w * 0.55, topY, p2.x + p2.w * 0.18, topY, grooveCol);
 
-      // Mancha de iluminação oval no asfalto e zebra gerada pelo poste arqueado (efeito dinâmico idêntico à imagem de referência!)
+      // Mancha de iluminação oval no asfalto e zebra gerada pelo poste arqueado (stamp pré-renderizado)
       if (segment.lampOffset !== null && segment.lampOffset !== undefined && p1.w > 10) {
         const lampSide = segment.lampOffset > 0 ? 1 : -1;
         const spotX = p1.x + p1.w * lampSide * 0.64;
         const spotY = (segBottomY + topY) * 0.5;
         const rx = p1.w * 0.44;
         const ry = Math.max(2.5, (segBottomY - topY) * 2.8);
-        const glow = ctx.createRadialGradient(spotX, spotY, 2, spotX, spotY, rx);
-        glow.addColorStop(0, 'rgba(255, 238, 140, 0.35)');
-        glow.addColorStop(0.5, 'rgba(255, 215, 90, 0.18)');
-        glow.addColorStop(1, 'rgba(255, 190, 60, 0)');
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.ellipse(spotX, spotY, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
+        if (!this._lampGlowStamp) {
+          const sc = document.createElement('canvas');
+          sc.width = 128; sc.height = 128;
+          const sctx = sc.getContext('2d');
+          const glow = sctx.createRadialGradient(64, 64, 2, 64, 64, 64);
+          glow.addColorStop(0, 'rgba(255, 238, 140, 0.35)');
+          glow.addColorStop(0.5, 'rgba(255, 215, 90, 0.18)');
+          glow.addColorStop(1, 'rgba(255, 190, 60, 0)');
+          sctx.fillStyle = glow;
+          sctx.beginPath();
+          sctx.arc(64, 64, 64, 0, Math.PI * 2);
+          sctx.fill();
+          this._lampGlowStamp = sc;
+        }
+        ctx.drawImage(this._lampGlowStamp, spotX - rx, spotY - ry, rx * 2, ry * 2);
       }
 
       // Marcas dinâmicas de pneu no asfalto ao contornar curvas no limite
@@ -5215,10 +5270,8 @@
 
         // Copa exuberante de palmas em leque (multi-camadas)
         const frondCols = isNight 
-          ? ['#0A1C12', '#0E291B', '#133925', '#1B4A31']
-          : (isDusk 
-            ? ['#1C331B', '#274724', '#385C2E', '#4B7337']
-            : ['#1B5E20', '#2E7D32', '#388E3C', '#4CAF50']);
+          ? PALM_FROND_COLS_NIGHT 
+          : (isDusk ? PALM_FROND_COLS_DUSK : PALM_FROND_COLS_DAY);
 
         for (let f = 0; f < 10; f++) {
           const ang = (f / 9) * Math.PI * 1.15 - 0.15;
@@ -5249,38 +5302,18 @@
         ctx.fillStyle = trunkCol;
         ctx.fillRect(-size * 0.05, -size * 0.95, size * 0.10, size * 0.95);
 
-        const layers = isNight
-          ? [
-              { y: -size * 0.94, rx: size * 0.46, ry: size * 0.13, c: '#0A1D13' },
-              { y: -size * 0.98, rx: size * 0.36, ry: size * 0.10, c: '#0F281B' },
-              { y: -size * 0.80, rx: size * 0.29, ry: size * 0.08, c: '#143624' },
-              { y: -size * 0.64, rx: size * 0.23, ry: size * 0.06, c: '#122F20' }
-            ]
-          : (isDusk
-            ? [
-                { y: -size * 0.94, rx: size * 0.46, ry: size * 0.13, c: '#1B3322' },
-                { y: -size * 0.98, rx: size * 0.36, ry: size * 0.10, c: '#23442D' },
-                { y: -size * 0.80, rx: size * 0.29, ry: size * 0.08, c: '#2F5C3E' },
-                { y: -size * 0.64, rx: size * 0.23, ry: size * 0.06, c: '#254E33' }
-              ]
-            : [
-                { y: -size * 0.94, rx: size * 0.46, ry: size * 0.13, c: '#143C25' },
-                { y: -size * 0.98, rx: size * 0.36, ry: size * 0.10, c: '#1C5233' },
-                { y: -size * 0.80, rx: size * 0.29, ry: size * 0.08, c: '#267347' },
-                { y: -size * 0.64, rx: size * 0.23, ry: size * 0.06, c: '#1E5E3A' }
-              ]);
-
-        for (let l of layers) {
-          ctx.fillStyle = l.c;
+        for (let i = 0; i < 4; i++) {
+          const l = PINE_LAYER_RATIOS[i];
+          ctx.fillStyle = isNight ? l.cNight : (isDusk ? l.cDusk : l.cDay);
           ctx.beginPath();
-          ctx.ellipse(0, l.y, l.rx, l.ry, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, size * l.yR, size * l.rxR, size * l.ryR, 0, 0, Math.PI * 2);
           ctx.fill();
 
           // Acúmulo de neve branca nos patamares da Araucária
           if (isSnow) {
             ctx.fillStyle = isNight ? '#CBD5E1' : '#FFFFFF';
             ctx.beginPath();
-            ctx.ellipse(0, l.y - l.ry * 0.25, l.rx * 0.76, l.ry * 0.45, 0, Math.PI, Math.PI * 2);
+            ctx.ellipse(0, (size * l.yR) - (size * l.ryR) * 0.25, (size * l.rxR) * 0.76, (size * l.ryR) * 0.45, 0, Math.PI, Math.PI * 2);
             ctx.fill();
           }
         }
@@ -10097,14 +10130,14 @@
           this.fpsLastTime = now;
         }
 
-        this.accumulator = Math.min(this.accumulator + frameTime, this.fixedStep * 1.8);
+        this.accumulator = Math.min(this.accumulator + frameTime, this.fixedStep * 3.5);
         let steps = 0;
-        while (this.accumulator >= this.fixedStep && steps < 2) {
+        while (this.accumulator >= this.fixedStep && steps < 4) {
           this.update(this.fixedStep);
           this.accumulator -= this.fixedStep;
           steps++;
         }
-        if (steps >= 2) {
+        if (steps >= 4) {
           this.accumulator = 0;
         }
 
